@@ -41,7 +41,7 @@ parser.add_argument('--niters', type=int, default=1000)
 parser.add_argument('--lr', type=float, default=0.01)
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--train_dir', type=str, default='./')
-parser.add_argument('--model_name', type=str, default='Neural_ODE',
+parser.add_argument('--model_name', type=str, default='Contiformer',
                     choices=['Neural_ODE', 'Contiformer'])
 parser.add_argument('--log_step', type=int, default=50)
 parser.add_argument('--seed', type=int, default=27)
@@ -146,6 +146,7 @@ def generate_spiral2d(nspiral=1000,
     samp_trajs = npr.randn(*orig_trajs.shape) * noise_std + orig_trajs
 
     return orig_trajs, samp_trajs, orig_ts
+# orig_trajs: [300, 150, 2], samp_trajs: [300, 150, 2], orig_ts: [150]
 
 
 class LatentODEfunc(nn.Module):
@@ -333,14 +334,14 @@ class ContiFormer(nn.Module):
 
             _input, _t0 = self.pad_input(input, t0[0])
 
-            X = torchcde.LinearInterpolation(_input, t=_t0)
-            input = X.evaluate(orig_ts).float()
-            orig_ts = torch.tensor(orig_ts).to(input.device)
+            X = torchcde.LinearInterpolation(_input, t=_t0) #_input: [64, 51, 16], _t0: [51]
+            input = X.evaluate(orig_ts).float() #input: [64,150, 16]
+            orig_ts = torch.tensor(orig_ts).to(input.device)#[150]
 
-            mask = torch.zeros(self.batch_size, ls, 1).to(input.device)
-            out, _ = self.encoder(input, orig_ts.unsqueeze(0).repeat(self.batch_size, 1).float(),
-                                  mask=mask.bool())
-            return self.lin_out(out), sample_idx
+            mask = torch.zeros(self.batch_size, ls, 1).to(input.device)#[64, 150, 1]
+            out, _ = self.encoder(input, orig_ts.unsqueeze(0).repeat(self.batch_size, 1).float(), #orig_ts.unsqueeze(0).repeat(self.batch_size, 1).shape: [64, 150]
+                                  mask=mask.bool()) #out: [64, 150, 16]
+            return self.lin_out(out), sample_idx #self.lin_out(out): [64, 150, 2]
         else:
             bs, ls = samples.shape[0], len(orig_ts)
             t0 = samples[..., -1]
@@ -373,7 +374,7 @@ if __name__ == '__main__':
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True
-    obs_dim = 2
+    obs_dim = 2 #hacer 1
     nspiral = 300
     start = 0.
     stop = 6 * np.pi
@@ -461,7 +462,7 @@ if __name__ == '__main__':
         samp_ts = samp_ts.reshape(1, -1, 1).repeat(ntrain, 1, 1)
         samp_trajs = torch.cat((samp_trajs, samp_ts), dim=-1).float()
 
-        out = model(samp_trajs, orig_ts, idx=idx, is_train=True)
+        out = model(samp_trajs, orig_ts, idx=idx, is_train=True) #Training
         try:
             pz0_mean = pz0_logvar = torch.zeros(out[1].size()).to(device)
         except:
@@ -508,7 +509,7 @@ if __name__ == '__main__':
                     samp_trajs = test_trajs[:, test_idx, :]
                     samp_ts = torch.tensor(orig_ts[test_idx]).to(samp_trajs.device)
                     samp_ts = samp_ts.reshape(1, -1, 1).repeat(ntest, 1, 1)
-                    samp_trajs = torch.cat((samp_trajs, samp_ts), dim=-1).float()
+                    samp_trajs = torch.cat((samp_trajs, samp_ts), dim=-1).float() #[100, 50, 3]
 
                     pred_x = model_vis(samp_trajs, orig_ts, idx=test_idx)[0]
 
