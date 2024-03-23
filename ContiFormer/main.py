@@ -27,6 +27,8 @@ from utils import *
 import random
 from contiformer_own import *
 from physiopro.network.contiformer import ContiFormer
+from datetime import datetime
+
 
 
 #torch.manual_seed(42)
@@ -102,7 +104,7 @@ parser.add_argument('--downsampling',default=False, action='store_true',
                     help='to undersample the signal')
 parser.add_argument('--zero_shot_downsample',default=False, action='store_true',
                     help='to undersample the signal at test time')
-parser.add_argument('--random',default=False, action='store_true',
+parser.add_argument('--random',default=False, action='store_false',
                     help='to drop random elements')
 parser.add_argument("--model", default='contiformer_physiopro',type=str,
                     help="Model you want to train")
@@ -429,7 +431,9 @@ def main(hyperp_tuning=False):
     elif(args.model == 'contiformer_own'):
         model = ContiFormer_own(obs_dim=1, device=device).to(device)
     elif(args.model == 'contiformer_physiopro'):
-        model = ContiFormer(d_model=1, n_layers=1, n_head=1, d_k=1, d_v=1, d_inner=128, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='cubic', nlinspace=1).to(device)
+        d_model = 1
+        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=1, d_v=1, d_inner=128, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='cubic', nlinspace=1).to(device)
+        mlp = torch.nn.Linear(d_model, num_classes, bias=True).to(device)
     else:
         raise ValueError('Model not supported')
     criterion = nn.CrossEntropyLoss()
@@ -445,9 +449,11 @@ def main(hyperp_tuning=False):
 
  
     # Training loop
-    for epoch in range(args.epoch):            
+    for epoch in range(args.epoch):   
+        start_time_epoch = time.time()          
         epoch_loss = 0.0  # Variable to store the total loss for the epoch
         for idx, batch in enumerate(data_loader):
+            print (f'it: {idx}, time: {datetime.now().strftime("%H:%M:%S")}')
             inputs, labels = batch['input'].to(device), batch['label'].to(device)
             x = np.linspace(0, inputs.shape[1], inputs.shape[1])
             if args.random:
@@ -486,19 +492,24 @@ def main(hyperp_tuning=False):
                         inputs2 = Signature_overlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs = torch.cat((inputs1, inputs2), dim=2)
       
-
+            print (f'---begin time: {datetime.now().strftime("%H:%M:%S")}')
             #outputs = model(inputs).to(device)
-            outputs,b = model(inputs)
+            outputs,_ = model(inputs) #[10,2000,1]
+            print (f'---end time: {datetime.now().strftime("%H:%M:%S")}')
+            outputs = outputs.to(device)
+            outputs = outputs.mean(dim=1)#[10,1] 
+            outputs = mlp(outputs)#[10,100]
             loss = criterion(outputs, labels)
             epoch_loss += loss.item()  # Add the loss of the current batch to the epoch loss
             writer.add_scalar('training/train_loss', loss, global_step) if not hyperp_tuning else train.report({"training/train_loss": loss.item()})
-
+            #print(f'training/train_loss {loss}, {global_step}')
             
             global_step += 1
             train_loss_list.append(loss.item())
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
 
         avg_epoch_loss = epoch_loss / len(data_loader)  # Calculate the average loss for the epoch
         writer.add_scalar('training/avg_train_loss', avg_epoch_loss, epoch) if not hyperp_tuning else train.report({"training/avg_train_loss": avg_epoch_loss}) # Add the average loss to the writer
@@ -544,7 +555,10 @@ def main(hyperp_tuning=False):
                 'optimizer' : model.state_dict(),
             },epoch+1,loss_is_best,outdir,args.save_all_epochs)
 
-        print(f'Epoch {epoch + 1}/{args.epoch}, Loss: {loss.item():.4f}, Valid Accuracy: {val_accuracy * 100:.2f}%, Best Valid Accuracy: {val_accuracy_best * 100:.2f}%')
+        end_time_epoch = time.time()
+        epoch_time = end_time_epoch - start_time_epoch
+        avg_seconds_per_epoch = epoch_time / (epoch + 1)
+        print(f'Epoch {epoch + 1}/{args.epoch}, Loss: {loss.item():.4f}, Valid Accuracy: {val_accuracy * 100:.2f}%, Best Valid Accuracy: {val_accuracy_best * 100:.2f}%, Average Seconds per Epoch: {avg_seconds_per_epoch:.2f}')
 
     end_time = time.time()
     execution_time = end_time - start_time
