@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import sklearn
 import torch
-from main import *
+from main_sin import *
 
 """
 This is from Pytorch tutorial (https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html)

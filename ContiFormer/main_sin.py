@@ -25,11 +25,12 @@ import matplotlib.pyplot as plt
 from datasets import *
 from utils import *
 import random
+#####################################
 from contiformer_own import *
 from physiopro.network.contiformer import ContiFormer
 #from PhysioPro.physiopro.network.contiformer import ContiFormer
 from datetime import datetime
-
+#####################################
 
 
 #torch.manual_seed(42)
@@ -40,7 +41,7 @@ print (device)
 parser = argparse.ArgumentParser(description='PyTorch Transformer on Time series forecasting')
 parser.add_argument('--input-size', default=10, type=int,
                     help='input_size (default: 5 = (4 covariates + 1 dim point))')
-parser.add_argument('--batch_size', default=5, type=int,
+parser.add_argument('--batch_size', default=10, type=int,
                     help='mini-batch size (default: 64)')
 parser.add_argument('--eval_batch_size', default=-1, type=int,
                     help='eval_batch_size default is equal to training batch_size')
@@ -118,7 +119,7 @@ parser.add_argument('--stack',default=True, action='store_true',
 parser.add_argument('--irreg',default=True, action='store_true',
                     help='to make your inputs invariant to time reparameterization')
     
-def calculate_accuracy(args, model, data_loader, num_classes, indices_keep):
+def calculate_accuracy(args, model, data_loader, num_classes, indices_keep, mlp):##################################### (mlp)
     model.eval()
     correct = 0
     total = 0
@@ -167,8 +168,13 @@ def calculate_accuracy(args, model, data_loader, num_classes, indices_keep):
                         inputs1 = Signature_nonoverlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs2 = Signature_overlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs = torch.cat((inputs1, inputs2), dim=2)
-
-            outputs = model(inputs).to(device)
+            #####################################
+            outputs,_ = model(inputs)#QUITAR .TO(DEVICE)!!!!!!!!
+            outputs = outputs.to(device)
+            outputs = outputs.mean(dim=1)
+            outputs = mlp(outputs)
+            #####################################
+            
             predicted_labels = torch.argmax(outputs, dim=1)
             total += labels.size(0)
             correct += (predicted_labels == labels).sum().item()
@@ -185,7 +191,7 @@ def calculate_accuracy(args, model, data_loader, num_classes, indices_keep):
 
 
 # Compute (S(X)_0,t_1, S(X)_0,t_2, ...)
-# Data - (B, T, F)
+# Data - (B, T, F
 # Fixed sig window length
 def Signature_overlapping_univariate(data, depth, sig_window, device):
 
@@ -403,7 +409,7 @@ def main(hyperp_tuning=False):
                 logs_name = f'{args.dataset}_{date_log}_use_signatures={args.use_signatures}_model={args.model}'
   
         print (logs_name)
-        outdir = f'models_classification/{logs_name}'
+        outdir = f'models_classification/sin_{logs_name}'
         os.mkdir(outdir)
         writer = SummaryWriter(outdir) 
 
@@ -429,12 +435,14 @@ def main(hyperp_tuning=False):
             model = DecoderTransformer(args,input_dim = num_features, n_head= args.n_head, layer= args.num_layers, seq_num = num_samples , n_embd = args.embedded_dim,win_len= seq_length, num_classes=num_classes).to(device)
     elif(args.model == 'lstm'):
         model = LSTM_Classification(input_size=num_features, hidden_size=10, num_layers=100, batch_first=True, num_classes=num_classes).to(device)
+#####################################
     elif(args.model == 'contiformer_own'):
         model = ContiFormer_own(obs_dim=1, device=device).to(device)
     elif(args.model == 'contiformer_physiopro'):
         d_model = 2
-        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=2, d_v=2, d_inner=2, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='linear', nlinspace=1, add_pe = True).to(device)
+        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=2, d_v=2, d_inner=128, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='cubic', nlinspace=1, add_pe = True).to(device)
         mlp = torch.nn.Linear(d_model, num_classes, bias=True).to(device)
+#####################################
     else:
         raise ValueError('Model not supported')
     criterion = nn.CrossEntropyLoss()
@@ -451,10 +459,12 @@ def main(hyperp_tuning=False):
  
     # Training loop
     for epoch in range(args.epoch):   
-        start_time_epoch = time.time()          
+        #####################################
+        start_time_epoch = time.time()   
+        print (f'Iterations for one epoch: {len(data_loader)}')       
         epoch_loss = 0.0  # Variable to store the total loss for the epoch
         for idx, batch in enumerate(data_loader):
-            #print (f'it: {idx}, time: {datetime.now().strftime("%H:%M:%S")}')
+            print (f'it: {idx}, time: {datetime.now().strftime("%H:%M:%S")}') #####################################
             inputs, labels = batch['input'].to(device), batch['label'].to(device)
             x = np.linspace(0, inputs.shape[1], inputs.shape[1])
             if args.random:
@@ -492,27 +502,16 @@ def main(hyperp_tuning=False):
                         inputs1 = Signature_nonoverlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs2 = Signature_overlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs = torch.cat((inputs1, inputs2), dim=2)
+            
 
-            #s1 = time.time()    
-            #outputs = model(inputs).to(device)
-            outputs,_ = model(inputs) #[10,2000,1]
-            #s2 = time.time()  
-            #print (f'---time 1: {s2-s1}')
+            #####################################
+            outputs,_ = model(inputs) #[10,2000,1], quitar .to(device)!!!!!!!!
             outputs = outputs.to(device)
-            #s3 = time.time()  
-            #print (f'---time 2: {s3-s2}')
             outputs = outputs.mean(dim=1)#[10,1] 
-            #s4 = time.time()  
-            #print (f'---time 3: {s4-s3}')
             outputs = mlp(outputs)#[10,100]
-            #s5 = time.time()  
-            #print (f'---time 4: {s5-s4}')
+            #####################################
             loss = criterion(outputs, labels)
-            #s6 = time.time()  
-            #print (f'---time 5: {s6-s5}')
             epoch_loss += loss.item()  # Add the loss of the current batch to the epoch loss
-            #s7 = time.time()  
-            #print (f'---time 6: {s7-s6}')
             writer.add_scalar('training/train_loss', loss, global_step) if not hyperp_tuning else train.report({"training/train_loss": loss.item()})
             #print(f'training/train_loss {loss}, {global_step}')
             
@@ -526,8 +525,8 @@ def main(hyperp_tuning=False):
 
         avg_epoch_loss = epoch_loss / len(data_loader)  # Calculate the average loss for the epoch
         writer.add_scalar('training/avg_train_loss', avg_epoch_loss, epoch) if not hyperp_tuning else train.report({"training/avg_train_loss": avg_epoch_loss}) # Add the average loss to the writer
-        val_accuracy, _ = calculate_accuracy(args, model, val_loader, num_classes, indices_keep)
-        test_accuracy, _ = calculate_accuracy(args, model, val_loader, num_classes, indices_keep)
+        val_accuracy, _ = calculate_accuracy(args, model, val_loader, num_classes, indices_keep, mlp)#####################################
+        test_accuracy, _ = calculate_accuracy(args, model, val_loader, num_classes, indices_keep, mlp)#####################################
         model.train()
         train.report({"val_accuracy": val_accuracy})
         writer.add_scalar('training/val_accuracy', val_accuracy, epoch) if not hyperp_tuning else train.report({"training/val_accuracy": val_accuracy})
@@ -567,11 +566,12 @@ def main(hyperp_tuning=False):
                 'state_dict': model.state_dict(),
                 'optimizer' : model.state_dict(),
             },epoch+1,loss_is_best,outdir,args.save_all_epochs)
-
+        #####################################
         end_time_epoch = time.time()
         epoch_time = end_time_epoch - start_time_epoch
         avg_seconds_per_epoch = epoch_time / (epoch + 1)
         print(f'Epoch {epoch + 1}/{args.epoch}, Loss: {loss.item():.4f}, Valid Accuracy: {val_accuracy * 100:.2f}%, Best Valid Accuracy: {val_accuracy_best * 100:.2f}%, Average Seconds per Epoch: {avg_seconds_per_epoch:.2f}')
+        #####################################
 
     end_time = time.time()
     execution_time = end_time - start_time
@@ -581,7 +581,7 @@ def main(hyperp_tuning=False):
     if (not hyperp_tuning):
         model.load_state_dict(torch.load(outdir+'/best_v_loss.pth.tar')['state_dict']) if not hyperp_tuning else None
         # Testing the model
-        test_accuracy, test_error_distribution = calculate_accuracy(args, model, test_loader, num_classes, indices_keep)
+        test_accuracy, test_error_distribution = calculate_accuracy(args, model, test_loader, num_classes, indices_keep, mlp)#####################################
         if (args.use_signatures):
             print(f'Test Accuracy using signatures: {test_accuracy * 100:.2f}%')
         else:
