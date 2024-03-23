@@ -27,6 +27,7 @@ from utils import *
 import random
 from contiformer_own import *
 from physiopro.network.contiformer import ContiFormer
+#from PhysioPro.physiopro.network.contiformer import ContiFormer
 from datetime import datetime
 
 
@@ -39,7 +40,7 @@ print (device)
 parser = argparse.ArgumentParser(description='PyTorch Transformer on Time series forecasting')
 parser.add_argument('--input-size', default=5, type=int,
                     help='input_size (default: 5 = (4 covariates + 1 dim point))')
-parser.add_argument('--batch_size', default=10, type=int,
+parser.add_argument('--batch_size', default=1, type=int,
                     help='mini-batch size (default: 64)')
 parser.add_argument('--eval_batch_size', default=-1, type=int,
                     help='eval_batch_size default is equal to training batch_size')
@@ -431,8 +432,8 @@ def main(hyperp_tuning=False):
     elif(args.model == 'contiformer_own'):
         model = ContiFormer_own(obs_dim=1, device=device).to(device)
     elif(args.model == 'contiformer_physiopro'):
-        d_model = 1
-        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=1, d_v=1, d_inner=128, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='cubic', nlinspace=1).to(device)
+        d_model = 20
+        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=20, d_v=20, d_inner=128, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='cubic', nlinspace=1, add_pe = True).to(device)
         mlp = torch.nn.Linear(d_model, num_classes, bias=True).to(device)
     else:
         raise ValueError('Model not supported')
@@ -453,7 +454,7 @@ def main(hyperp_tuning=False):
         start_time_epoch = time.time()          
         epoch_loss = 0.0  # Variable to store the total loss for the epoch
         for idx, batch in enumerate(data_loader):
-            print (f'it: {idx}, time: {datetime.now().strftime("%H:%M:%S")}')
+            #print (f'it: {idx}, time: {datetime.now().strftime("%H:%M:%S")}')
             inputs, labels = batch['input'].to(device), batch['label'].to(device)
             x = np.linspace(0, inputs.shape[1], inputs.shape[1])
             if args.random:
@@ -491,16 +492,27 @@ def main(hyperp_tuning=False):
                         inputs1 = Signature_nonoverlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs2 = Signature_overlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs = torch.cat((inputs1, inputs2), dim=2)
-      
-            print (f'---begin time: {datetime.now().strftime("%H:%M:%S")}')
+
+            #s1 = time.time()    
             #outputs = model(inputs).to(device)
             outputs,_ = model(inputs) #[10,2000,1]
-            print (f'---end time: {datetime.now().strftime("%H:%M:%S")}')
+            #s2 = time.time()  
+            #print (f'---time 1: {s2-s1}')
             outputs = outputs.to(device)
+            #s3 = time.time()  
+            #print (f'---time 2: {s3-s2}')
             outputs = outputs.mean(dim=1)#[10,1] 
+            #s4 = time.time()  
+            #print (f'---time 3: {s4-s3}')
             outputs = mlp(outputs)#[10,100]
+            #s5 = time.time()  
+            #print (f'---time 4: {s5-s4}')
             loss = criterion(outputs, labels)
+            #s6 = time.time()  
+            #print (f'---time 5: {s6-s5}')
             epoch_loss += loss.item()  # Add the loss of the current batch to the epoch loss
+            #s7 = time.time()  
+            #print (f'---time 6: {s7-s6}')
             writer.add_scalar('training/train_loss', loss, global_step) if not hyperp_tuning else train.report({"training/train_loss": loss.item()})
             #print(f'training/train_loss {loss}, {global_step}')
             
@@ -509,6 +521,7 @@ def main(hyperp_tuning=False):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            #print (f'---time 8: {datetime.now().strftime("%H:%M:%S")}')
 
 
         avg_epoch_loss = epoch_loss / len(data_loader)  # Calculate the average loss for the epoch
