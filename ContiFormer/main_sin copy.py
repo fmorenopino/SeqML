@@ -32,15 +32,16 @@ from PhysioPro.physiopro.network.contiformer import ContiFormer
 from datetime import datetime
 #####################################
 
+
 #torch.manual_seed(42)
-torch.manual_seed(6)
+torch.manual_seed(0)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print (device)
 parser = argparse.ArgumentParser(description='PyTorch Transformer on Time series forecasting')
-parser.add_argument('--input-size', default=5, type=int,
+parser.add_argument('--input-size', default=10, type=int,
                     help='input_size (default: 5 = (4 covariates + 1 dim point))')
-parser.add_argument('--batch_size', default=1, type=int,
+parser.add_argument('--batch_size', default=10, type=int,
                     help='mini-batch size (default: 64)')
 parser.add_argument('--eval_batch_size', default=-1, type=int,
                     help='eval_batch_size default is equal to training batch_size')
@@ -48,7 +49,7 @@ parser.add_argument('--n_head', default=1, type=int,
                     help='n_head (default: 1)')
 parser.add_argument('--num-layers', default=1, type=int,
                     help='num-layers (default: 1)')
-parser.add_argument('--epoch', default=120, type=int,
+parser.add_argument('--epoch', default=1000, type=int,
                     help='epoch (default: 20)')
 parser.add_argument('--epochs_for_convergence', default=10000, type=int,
                     help='number of epochs evaluated to assess convergence (default: 100)')
@@ -71,7 +72,7 @@ parser.add_argument('--scale_att',default=False, action='store_true',
                     help='Scaling Attention')
 parser.add_argument('--sparse',default=False, action='store_true',
                     help='Perform the simulation of sparse attention ')
-parser.add_argument("--dataset", default='eigenworms',type=str,
+parser.add_argument("--dataset", default='sinusoidal',type=str,
                     help="Dataset you want to train")
 parser.add_argument('--v_partition',default=0.1, type=float,
                     help='validation_partition')
@@ -91,34 +92,34 @@ parser.add_argument('--save_all_epochs',default=False, action='store_true',
                     help='whatever to save the pytorch model all epochs')
 parser.add_argument("--pretrained_model_path", default='',type=str,
                     help="location of the dataset to keep trainning")
-parser.add_argument('--use_signatures',default=False, action='store_false',
+parser.add_argument('--use_signatures',default=False, action='store_false',#####################################
                     help='use the signatures of the dataset or the dataset itself')
-parser.add_argument("--sig_win_len", default=100,type=int,
+parser.add_argument("--sig_win_len", default=25,type=int,
                     help="win_len used to compute the signature")
 parser.add_argument('--sig_level',default=2, type=int,
                     help='sig_level')
 parser.add_argument('--hyperp_tuning',default=False, action='store_true',
                     help='whether to perform hyperparameter tuning')
-parser.add_argument('--num_windows',default=30, type=int,
+parser.add_argument('--num_windows',default=75, type=int,
                     help='number of windows')
 parser.add_argument('--downsampling',default=False, action='store_true',
                     help='to undersample the signal')
 parser.add_argument('--zero_shot_downsample',default=False, action='store_true',
                     help='to undersample the signal at test time')
-parser.add_argument('--random',default=False, action='store_true',
+parser.add_argument('--random',default=False, action='store_false',
                     help='to drop random elements')
-parser.add_argument("--model", default='contiformer_physiopro',type=str,#########################################
+parser.add_argument("--model", default='contiformer_physiopro',type=str,
                     help="Model you want to train")
 parser.add_argument('--overlapping_sigs',default=False, action='store_true',
                     help='to take overlapping signatures')
 parser.add_argument('--univariate',default=False, action='store_true',
                     help='to take univariate signatures')
-parser.add_argument('--stack',default=False, action='store_true',
+parser.add_argument('--stack',default=True, action='store_true',
                     help='to use multi-view attention')
 parser.add_argument('--irreg',default=True, action='store_true',
                     help='to make your inputs invariant to time reparameterization')
     
-def calculate_accuracy(args, model, data_loader, num_classes, indices_keep, mlp):
+def calculate_accuracy(args, model, data_loader, num_classes, indices_keep, mlp):##################################### (mlp)
     model.eval()
     correct = 0
     total = 0
@@ -127,8 +128,7 @@ def calculate_accuracy(args, model, data_loader, num_classes, indices_keep, mlp)
 
     with torch.no_grad():
         for batch in data_loader:
-            inputs, labels = batch
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = batch['input'].to(device), batch['label'].to(device)
             x = np.linspace(0, inputs.shape[1], inputs.shape[1])
             if args.zero_shot_downsample:
                 if args.random:
@@ -168,11 +168,13 @@ def calculate_accuracy(args, model, data_loader, num_classes, indices_keep, mlp)
                         inputs1 = Signature_nonoverlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs2 = Signature_overlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs = torch.cat((inputs1, inputs2), dim=2)
-
+            #####################################
             outputs,_ = model(inputs)#QUITAR .TO(DEVICE)!!!!!!!!
             outputs = outputs.to(device)
             outputs = outputs.mean(dim=1)
             outputs = mlp(outputs)
+            #####################################
+            
             predicted_labels = torch.argmax(outputs, dim=1)
             total += labels.size(0)
             correct += (predicted_labels == labels).sum().item()
@@ -189,7 +191,7 @@ def calculate_accuracy(args, model, data_loader, num_classes, indices_keep, mlp)
 
 
 # Compute (S(X)_0,t_1, S(X)_0,t_2, ...)
-# Data - (B, T, F)
+# Data - (B, T, F
 # Fixed sig window length
 def Signature_overlapping_univariate(data, depth, sig_window, device):
 
@@ -319,22 +321,31 @@ def main(hyperp_tuning=False):
 
     print('Dataset', args.dataset)
     
-        
-    if args.dataset == 'eigenworms':
-        eigenworms = EigenWorms()
-        train_dataset, valid_dataset, test_dataset = eigenworms.get_eigenworms()
-
-        seq_length = train_dataset[0][0].shape[0]
+    if (args.dataset == 'sinusoidal'):
+        # Hyperparameters for the dataset and dataloader
+        num_samples = 100
+        seq_length = 2000
         seq_length_orig = seq_length
 
-        num_features = train_dataset[0][0].shape[1]
-        num_samples = len(train_dataset)
-        num_classes = 5
+    
+        num_features = 1
+        '''
+        freq_min=1 
+        freq_max= 11
+        num_classes=10
+        '''
 
-        data_loader = DataLoader(train_dataset, shuffle=True, batch_size=args.batch_size)
-        val_loader = DataLoader(valid_dataset, shuffle=False, batch_size=len(valid_dataset))
-        test_loader = DataLoader(test_dataset, shuffle=False, batch_size=len(test_dataset))
-
+        freq_min=10 
+        freq_max=500 
+        num_classes=100
+    
+        dataset = SinusoidalDataset(num_samples, seq_length, num_features, freq_min, freq_max, num_classes)
+        data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+        val_dataset = SinusoidalDataset(num_samples, seq_length, num_features, freq_min, freq_max, num_classes)  # 100 test samples
+        val_loader = DataLoader(val_dataset, batch_size=eval_batch_size, shuffle=False)
+        # Create test dataset and loader
+        test_dataset = SinusoidalDataset(num_samples, seq_length, num_features, freq_min, freq_max, num_classes)  # 100 test samples
+        test_loader = DataLoader(test_dataset, batch_size=eval_batch_size, shuffle=False)
     else:
         raise ValueError('Dataset not supported')
     
@@ -398,7 +409,7 @@ def main(hyperp_tuning=False):
                 logs_name = f'{args.dataset}_{date_log}_use_signatures={args.use_signatures}_model={args.model}'
   
         print (logs_name)
-        outdir = f'models_classification/{logs_name}'
+        outdir = f'models_classification/efficiency_{logs_name}'
         os.mkdir(outdir)
         writer = SummaryWriter(outdir) 
 
@@ -424,12 +435,14 @@ def main(hyperp_tuning=False):
             model = DecoderTransformer(args,input_dim = num_features, n_head= args.n_head, layer= args.num_layers, seq_num = num_samples , n_embd = args.embedded_dim,win_len= seq_length, num_classes=num_classes).to(device)
     elif(args.model == 'lstm'):
         model = LSTM_Classification(input_size=num_features, hidden_size=10, num_layers=100, batch_first=True, num_classes=num_classes).to(device)
+#####################################
     elif(args.model == 'contiformer_own'):
         model = ContiFormer_own(obs_dim=1, device=device).to(device)
     elif(args.model == 'contiformer_physiopro'):
-        d_model = 6
-        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=6, d_v=6, d_inner=2, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='cubic', nlinspace=1, add_pe = True).to(device)
+        d_model = 2
+        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=2, d_v=2, d_inner=128, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='cubic', nlinspace=1, add_pe = True).to(device)
         mlp = torch.nn.Linear(d_model, num_classes, bias=True).to(device)
+#####################################
     else:
         raise ValueError('Model not supported')
     criterion = nn.CrossEntropyLoss()
@@ -445,14 +458,14 @@ def main(hyperp_tuning=False):
 
  
     # Training loop
-    for epoch in range(args.epoch):    
-        start_time_epoch = time.time()         
-        print (f'Iterations for one epoch: {len(data_loader)}') 
+    for epoch in range(args.epoch):   
+        #####################################
+        start_time_epoch = time.time()   
+        print (f'Iterations for one epoch: {len(data_loader)}')       
         epoch_loss = 0.0  # Variable to store the total loss for the epoch
         for idx, batch in enumerate(data_loader):
             print (f'it: {idx}, time: {datetime.now().strftime("%H:%M:%S")}') #####################################
-            inputs, labels = batch
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = batch['input'].to(device), batch['label'].to(device)
             x = np.linspace(0, inputs.shape[1], inputs.shape[1])
             if args.random:
                 indices_keep = sorted(random.sample(all_indices, 1000))
@@ -489,8 +502,10 @@ def main(hyperp_tuning=False):
                         inputs1 = Signature_nonoverlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs2 = Signature_overlapping_univariate(inputs,args.sig_level, args.sig_win_len, device)
                         inputs = torch.cat((inputs1, inputs2), dim=2)
+            
+
             #####################################
-            outputs = model(inputs) #[10,2000,1], quitar .to(device)!!!!!!!!
+            outputs,_ = model(inputs) #[10,2000,1], quitar .to(device)!!!!!!!!
             outputs = outputs.to(device)
             outputs = outputs.mean(dim=1)#[10,1] 
             outputs = mlp(outputs)#[10,100]
@@ -498,25 +513,27 @@ def main(hyperp_tuning=False):
             loss = criterion(outputs, labels)
             epoch_loss += loss.item()  # Add the loss of the current batch to the epoch loss
             writer.add_scalar('training/train_loss', loss, global_step) if not hyperp_tuning else train.report({"training/train_loss": loss.item()})
-
+            #print(f'training/train_loss {loss}, {global_step}')
             
             global_step += 1
             train_loss_list.append(loss.item())
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            #print (f'---time 8: {datetime.now().strftime("%H:%M:%S")}')
+
 
         avg_epoch_loss = epoch_loss / len(data_loader)  # Calculate the average loss for the epoch
         writer.add_scalar('training/avg_train_loss', avg_epoch_loss, epoch) if not hyperp_tuning else train.report({"training/avg_train_loss": avg_epoch_loss}) # Add the average loss to the writer
-        val_accuracy, _ = calculate_accuracy(args, model, val_loader, num_classes, indices_keep, mlp)
-        test_accuracy, _ = calculate_accuracy(args, model, test_loader, num_classes, indices_keep, mlp)
+        val_accuracy, _ = calculate_accuracy(args, model, val_loader, num_classes, indices_keep, mlp)#####################################
+        test_accuracy, _ = calculate_accuracy(args, model, val_loader, num_classes, indices_keep, mlp)#####################################
         model.train()
         train.report({"val_accuracy": val_accuracy})
         writer.add_scalar('training/val_accuracy', val_accuracy, epoch) if not hyperp_tuning else train.report({"training/val_accuracy": val_accuracy})
         val_accuracy_list.append(val_accuracy)
 
         train.report({"test_accuracy": test_accuracy})
-        writer.add_scalar('training/test_accuracy', test_accuracy, epoch) if not hyperp_tuning else train.report({"training/test_accuracy": val_accuracy})
+        writer.add_scalar('training/test_accuracy', val_accuracy, epoch) if not hyperp_tuning else train.report({"training/test_accuracy": val_accuracy})
         test_accuracy_list.append(test_accuracy)
 
         if len(val_accuracy_list) > args.epochs_for_convergence and converged == False:
@@ -549,11 +566,12 @@ def main(hyperp_tuning=False):
                 'state_dict': model.state_dict(),
                 'optimizer' : model.state_dict(),
             },epoch+1,loss_is_best,outdir,args.save_all_epochs)
-
+        #####################################
         end_time_epoch = time.time()
         epoch_time = end_time_epoch - start_time_epoch
         avg_seconds_per_epoch = epoch_time / (epoch + 1)
         print(f'Epoch {epoch + 1}/{args.epoch}, Loss: {loss.item():.4f}, Valid Accuracy: {val_accuracy * 100:.2f}%, Best Valid Accuracy: {val_accuracy_best * 100:.2f}%, Average Seconds per Epoch: {avg_seconds_per_epoch:.2f}')
+        #####################################
 
     end_time = time.time()
     execution_time = end_time - start_time
@@ -561,9 +579,9 @@ def main(hyperp_tuning=False):
     print(f"Training time: {execution_time:.2f} seconds")
 
     if (not hyperp_tuning):
-        #model.load_state_dict(torch.load(outdir+'/best_v_loss.pth.tar')['state_dict']) if not hyperp_tuning else None
+        model.load_state_dict(torch.load(outdir+'/best_v_loss.pth.tar')['state_dict']) if not hyperp_tuning else None
         # Testing the model
-        test_accuracy, test_error_distribution = calculate_accuracy(args, model, test_loader, num_classes, indices_keep, mlp)
+        test_accuracy, test_error_distribution = calculate_accuracy(args, model, test_loader, num_classes, indices_keep, mlp)#####################################
         if (args.use_signatures):
             print(f'Test Accuracy using signatures: {test_accuracy * 100:.2f}%')
         else:

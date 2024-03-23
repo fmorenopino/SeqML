@@ -27,8 +27,8 @@ from utils import *
 import random
 #####################################
 from contiformer_own import *
-from physiopro.network.contiformer import ContiFormer
-#from PhysioPro.physiopro.network.contiformer import ContiFormer
+#from physiopro.network.contiformer import ContiFormer
+from PhysioPro.physiopro.network.contiformer import ContiFormer
 from datetime import datetime
 #####################################
 
@@ -92,7 +92,7 @@ parser.add_argument('--save_all_epochs',default=False, action='store_true',
                     help='whatever to save the pytorch model all epochs')
 parser.add_argument("--pretrained_model_path", default='',type=str,
                     help="location of the dataset to keep trainning")
-parser.add_argument('--use_signatures',default=False, action='store_false',
+parser.add_argument('--use_signatures',default=False, action='store_false',#####################################
                     help='use the signatures of the dataset or the dataset itself')
 parser.add_argument("--sig_win_len", default=25,type=int,
                     help="win_len used to compute the signature")
@@ -323,7 +323,7 @@ def main(hyperp_tuning=False):
     
     if (args.dataset == 'sinusoidal'):
         # Hyperparameters for the dataset and dataloader
-        num_samples = 1000
+        num_samples = 100
         seq_length = 2000
         seq_length_orig = seq_length
 

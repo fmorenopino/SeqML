@@ -226,7 +226,7 @@ class EigenWorms():
         torch.save(valid_dataset, processed_data_dir + '/validation.pt')
 
     def get_eigenworms(self):
-        data_dir = os.getcwd()  + '/data/eigenworms'
+        data_dir = os.getcwd()  + '/ContiFormer/data/eigenworms' #################################
         if not os.path.isdir(data_dir):
             os.mkdir(data_dir)
 
