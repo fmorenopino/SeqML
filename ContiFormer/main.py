@@ -38,9 +38,9 @@ torch.manual_seed(0)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print (device)
 parser = argparse.ArgumentParser(description='PyTorch Transformer on Time series forecasting')
-parser.add_argument('--input-size', default=5, type=int,
+parser.add_argument('--input-size', default=10, type=int,
                     help='input_size (default: 5 = (4 covariates + 1 dim point))')
-parser.add_argument('--batch_size', default=1, type=int,
+parser.add_argument('--batch_size', default=5, type=int,
                     help='mini-batch size (default: 64)')
 parser.add_argument('--eval_batch_size', default=-1, type=int,
                     help='eval_batch_size default is equal to training batch_size')
@@ -432,8 +432,8 @@ def main(hyperp_tuning=False):
     elif(args.model == 'contiformer_own'):
         model = ContiFormer_own(obs_dim=1, device=device).to(device)
     elif(args.model == 'contiformer_physiopro'):
-        d_model = 20
-        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=20, d_v=20, d_inner=128, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='cubic', nlinspace=1, add_pe = True).to(device)
+        d_model = 2
+        model = ContiFormer(d_model=d_model, n_layers=1, n_head=1, d_k=2, d_v=2, d_inner=2, actfn_ode='sigmoid', layer_type_ode='concatnorm', zero_init_ode=False, linear_type_ode='before', atol_ode=1e-1, rtol_ode=1e-1, itol_ode=1e-2, method_ode='rk4', regularize=False, approximate_method='bilinear', interpolate_ode='linear', nlinspace=1, add_pe = True).to(device)
         mlp = torch.nn.Linear(d_model, num_classes, bias=True).to(device)
     else:
         raise ValueError('Model not supported')
